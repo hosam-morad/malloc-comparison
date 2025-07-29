@@ -17,6 +17,6 @@ target_include_directories(${ALLOC_NAME} PUBLIC
 )
 
 # Optional: set the output path of the shared library to the allocator root
-set_target_properties(${ALLOC_NAME} PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
+# set_target_properties(${ALLOC_NAME} PROPERTIES
+#     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+# )

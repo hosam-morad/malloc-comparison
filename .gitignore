@@ -1,0 +1,11 @@
+/experiments/
+/results/
+/analysis/
+build/
+*.pdf
+*.log
+*.csv
+.vscode/
+__pycache__/
+build/
+*.pyc

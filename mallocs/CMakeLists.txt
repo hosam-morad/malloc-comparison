@@ -14,12 +14,27 @@ add_definitions(-DTHREAD_SAFETY)
 include(CompilerFlags.cmake)
 # List of all malloc implementation subdirs
 
-set(MALLOC_DIRS
-    # stdmalloc
+set(MALLOC_VERSIONS
+    # glibcmalloc
     dlmalloc
+    mimalloc
 )
 
+# Extend the Make-only list by prepending or appending ptmalloc2
+set(MALLOC_VERSIONS_MAKE ptmalloc2 ${MALLOC_VERSIONS})
+
+# Convert to Make-space-separated format
+string(REPLACE ";" " " MALLOC_VERSIONS_MAKE_STR "${MALLOC_VERSIONS_MAKE}")
+
+# Write to a Make-readable file
+file(WRITE "${CMAKE_SOURCE_DIR}/versions.mk"
+    "MALLOC_VERSIONS := ${MALLOC_VERSIONS_MAKE_STR}\n")
+
+# Place all shared libs in a central location
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+
 # Add a shared library target for each
-foreach(dir IN LISTS MALLOC_DIRS)
+foreach(dir IN LISTS MALLOC_VERSIONS)
     add_subdirectory(${dir})
 endforeach()

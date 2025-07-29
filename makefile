@@ -15,7 +15,7 @@ MALLOCS_ROOT_DIR := $(ROOT_DIR)/mallocs
 
 ##### constants
 
-SUBMODULES := experiments
+SUBMODULES := mallocs experiments results analysis
 
 include $(ROOT_DIR)/workloads.mk
 include $(ROOT_DIR)/common.mk
