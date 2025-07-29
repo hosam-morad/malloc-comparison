@@ -2,8 +2,10 @@ MODULE_NAME := experiments
 SUBMODULES := $(addprefix $(MODULE_NAME)/,$(MALLOC_VERSIONS))
 
 ifndef NUM_OF_REPEATS
-NUM_OF_REPEATS := 1
+NUM_OF_REPEATS := 3
 endif # ifndef NUM_OF_REPEATS
+
+BENCHMARK_LIST := experiments/benchmark_list.txt
 
 ##### scripts
 RUN_BENCHMARK := $(SCRIPTS_ROOT_DIR)/runBenchmark.py
@@ -35,13 +37,17 @@ export BOUND_MEMORY_NODE := $$(( $(NUMBER_OF_SOCKETS) - 1 ))
 experiments-prerequisites: mallocs
 
 
-$(MODULE_NAME): $(SUBMODULES)
+$(MODULE_NAME): $(BENCHMARK_LIST) $(SUBMODULES)
+
 SUBMAKEFILES := $(addsuffix /module.mk,$(SUBMODULES))
 
 $(MODULE_NAME)/%/module.mk: $(MODULE_NAME)/template.mk
 	mkdir -p $(dir $@)
 	cp $< $@
 	sed -i "s/MALLOC_VERSION/$(notdir $(patsubst %/,%,$(dir $@)))/g" $@
+
+$(BENCHMARK_LIST): $(MODULE_NAME)/module.mk
+	echo $(benchmarks) | tr " " "\n" | sort > $@
 
 $(MODULE_NAME)/clean: $(addsuffix /clean,$(SUBMODULES))
 
