@@ -8,6 +8,20 @@ import os
 def parse_kv_file(path):
     keys = []
     values = []
+
+    # Check for core dump indication in benchmark.log
+    log_path = os.path.join(os.path.dirname(path), 'benchmark.log')
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, 'r') as log_file:
+                if 'core dumped' in log_file.read():
+                    print(f"Warning: 'core dumped' found in {log_path}", file=sys.stderr)
+                    return [], []
+        except Exception as e:
+            print(f"Error reading {log_path}: {e}", file=sys.stderr)
+            return [], []
+
+    # Proceed with parsing the key-value CSV
     try:
         with open(path, 'r') as f:
             for line in f:
@@ -19,10 +33,11 @@ def parse_kv_file(path):
                 values.append(value.strip())
     except FileNotFoundError:
         print(f"Error: file not found: {path}", file=sys.stderr)
-        sys.exit(1)
+        return [], []
     except Exception as e:
         print(f"Error while reading {path}: {e}", file=sys.stderr)
-        sys.exit(1)
+        return [], []
+
     return keys, values
 
 if __name__ == '__main__':

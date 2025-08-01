@@ -75,12 +75,28 @@ def plot_metric(df, metric, malloc_columns, output):
 
             mallocs = list(percent_diffs.keys())
             diffs = [percent_diffs[m] for m in mallocs]
+            x = np.arange(len(mallocs))
+            bar_width = 0.2
+            axes[i].bar(x, diffs, width=bar_width, color=plt.cm.tab10.colors[:len(mallocs)])
+            axes[i].set_xticks(x)
+            axes[i].set_xticklabels(mallocs, rotation=45)
 
-            axes[i].bar(mallocs, diffs, color=plt.cm.tab10.colors[:len(mallocs)])
+            # Adjust x-limits only when needed
+            if len(mallocs) == 1:
+                axes[i].set_xlim(-0.5, 0.5)
+            else:
+                axes[i].set_xlim(-0.5, len(mallocs) - 0.5)
+
             axes[i].axhline(0, color='black', linestyle='--', linewidth=0.8)
             axes[i].set_title(benchmark)
             axes[i].tick_params(axis='x', rotation=45)
-            axes[i].set_ylabel(f'relative {metric} to glibc [%]')
+            
+            # Only show ylabel on leftmost subplots
+            if i % NCOLS == 0:
+                axes[i].set_ylabel(f'relative {metric} to glibc [%]')
+            else:
+                axes[i].set_ylabel("")
+
             axes[i].grid(True, linestyle=':', linewidth=0.5)
 
         plt.tight_layout()
@@ -88,8 +104,7 @@ def plot_metric(df, metric, malloc_columns, output):
         plt.close(fig)
 
     pdf.close()
-
-    
+  
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot a single metric across benchmarks.')
     parser.add_argument('-o', '--output', type=str, required=True, help='PDF file')
