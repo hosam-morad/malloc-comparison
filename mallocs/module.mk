@@ -2,26 +2,54 @@
 
 MALLOC_ROOT_DIR := mallocs
 MALLOC_BUILD_DIR := $(MALLOC_ROOT_DIR)/build
-MALLOC_CMAKE := $(MALLOC_BUILD_DIR)/CMakeCache.txt
+MALLOC_CMAKE := $(MALLOC_ROOT_DIR)/CMakeLists.txt
 
-include $(MALLOC_ROOT_DIR)/versions.mk
+# --- Submodules guard ---------------------------------------------------------
+SUBMODULES_STAMP := $(MALLOC_ROOT_DIR)/.submodules-inited
 
-MALLOC_LIST := $(MALLOC_ROOT_DIR)/malloc_list.txt
+$(SUBMODULES_STAMP): .gitmodules
+	git submodule update --init --recursive
+	touch $@
 
-# Default CMake .so output layout (subdir per malloc)
-MALLOC_LIB_DIR := $(MALLOC_BUILD_DIR)/lib
-MALLOC_LIBS := $(foreach malloc,$(MALLOC_VERSIONS),$(MALLOC_LIB_DIR)/lib$(malloc).so)
+.PHONY: mallocs-submodules
+mallocs-submodules: $(SUBMODULES_STAMP)
 
-.PHONY: $(MALLOC_CMAKE) $(MALLOC_LIST) $(MALLOC_ROOT_DIR) 
+# Ensure submodules exist before configuring/building (order-only)
+$(MALLOC_ROOT_DIR)/versions.mk: | $(SUBMODULES_STAMP)
+$(MALLOC_BUILD_DIR):            | $(SUBMODULES_STAMP)
 
-$(MALLOC_ROOT_DIR): $(MALLOC_LIBS)
+# --- Versions discovery -------------------------------------------------------
+# Optional default; can be overridden by versions.mk or command line
+MALLOC_VERSIONS ?= dlmalloc mimalloc
 
-$(MALLOC_LIBS): $(MALLOC_CMAKE)
-	$(MAKE) -C $(MALLOC_BUILD_DIR)
-
-$(MALLOC_CMAKE):
+# If CMake generates versions.mk, this rule will create/update it when CMakeLists changes
+$(MALLOC_ROOT_DIR)/versions.mk: $(MALLOC_CMAKE)
 	mkdir -p $(MALLOC_BUILD_DIR)
 	cd $(MALLOC_BUILD_DIR) && cmake ..
 
-$(MALLOC_LIST): $(MALLOC_ROOT_DIR)/module.mk
+# Include it early; 'make' will remake and re-exec if missing
+-include $(MALLOC_ROOT_DIR)/versions.mk
+
+# --- Libs list & outputs ------------------------------------------------------
+MALLOC_LIST := $(MALLOC_ROOT_DIR)/malloc_list.txt
+MALLOC_LIB_DIR := $(MALLOC_BUILD_DIR)/lib
+
+# Defer expansion so it sees the final MALLOC_VERSIONS
+MALLOC_LIBS = $(foreach malloc,$(MALLOC_VERSIONS),$(MALLOC_LIB_DIR)/lib$(malloc).so)
+
+.PHONY: mallocs
+mallocs: $(MALLOC_LIBS) $(MALLOC_LIST)
+
+# Build rule: ensure build dir exists, and also rebuild if CMakeLists changes
+$(MALLOC_LIBS): $(MALLOC_CMAKE) | $(MALLOC_BUILD_DIR)
+	$(MAKE) -C $(MALLOC_BUILD_DIR)
+
+$(MALLOC_BUILD_DIR):
+	mkdir -p $@
+
+# Keep the list in sync with versions; ensure parent dir exists
+$(MALLOC_LIST): $(MALLOC_ROOT_DIR)/versions.mk | $(MALLOC_ROOT_DIR)
 	echo $(MALLOC_VERSIONS) | tr " " "\n" | sort > $@
+
+$(MALLOC_ROOT_DIR):
+	mkdir -p $@
