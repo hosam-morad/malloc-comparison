@@ -3,6 +3,14 @@ project(MallocVariants)
 
 set(CMAKE_CXX_STANDARD 11)
 
+# Make CMake prefer the right pthread flag on GNU toolchains, etc.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+# Link pthreads to all targets created in this directory and subdirectories
+# (directory scope; affects targets defined AFTER this line)
+link_libraries(Threads::Threads)
+
 # enable testing
 enable_testing()
 # Add custom target to run tests verbosely
