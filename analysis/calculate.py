@@ -23,7 +23,12 @@ if __name__ == '__main__':
         mallocs = [line.strip() for line in f if line.strip()]
 
     # Build DataFrame columns
-    columns_label = ['benchmark'] + [f"{malloc}_{metric}" for malloc in mallocs for metric in args.metrics]
+    columns_label = ['benchmark']
+    for malloc in mallocs:
+        for metric in args.metrics:
+            columns_label.append(f"{malloc}_{metric}_mean")
+            columns_label.append(f"{malloc}_{metric}_median")
+            columns_label.append(f"{malloc}_{metric}_mad")
     res_df = pd.DataFrame(columns=columns_label)
 
     for benchmark in benchmarks:
@@ -47,7 +52,10 @@ if __name__ == '__main__':
                 for metric in args.metrics:
                     try:
                         metric_vals = [df[metrics[metric]].iloc[0] for df in time_dfs]
-                        results.append(np.mean(metric_vals))
+                        mean_val = np.mean(metric_vals)
+                        median_val = np.median(metric_vals)
+                        mad_val = np.mean(np.abs(metric_vals - mean_val))  # Mean absolute deviation
+                        results.extend([mean_val, median_val, mad_val])
                     except Exception as e:
                         print(f"Missing {metric} in {malloc}/{benchmark}: {e}", file=sys.stderr)
                         results.append(None)

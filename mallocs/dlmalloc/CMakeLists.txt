@@ -11,6 +11,9 @@ file(GLOB HDRS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
 # Create shared library
 add_library(${ALLOC_NAME} SHARED ${SRCS} ${HDRS})
 
+# Add THIS line (enables dlmalloc’s internal pthread locking)
+target_compile_definitions(${ALLOC_NAME} PRIVATE USE_LOCKS=1)
+
 # Set include path for the allocator's header files
 target_include_directories(${ALLOC_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
