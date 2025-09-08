@@ -262,7 +262,8 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf):
 
             fig, ax = plt.subplots(figsize=(10, 6))
 
-            for col in cols:
+            colors = ['tab:blue', 'tab:orange']
+            for i, col in enumerate(cols):
                 if use_abs:
                     x, y = _rank_series_abs(df[col])
                     mean_val = np.nanmean(np.abs(df[col].values))
@@ -271,9 +272,8 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf):
                     x, y = _rank_series(df[col])
                     mean_val = np.nanmean(df[col].values)
                     label = f"{col}"
-
-                ax.plot(x, y, label=label)
-                ax.axhline(mean_val, linestyle="--", linewidth=1, label=f"mean({label})")
+                ax.plot(x, y, label=label, color=colors[i % len(colors)])
+                ax.axhline(mean_val, linestyle="--", linewidth=1, label=f"mean({label})", color=colors[i % len(colors)])
 
             ax.set_xlabel("Rank (sorted per line)")
             ax.set_ylabel("Percent difference vs glibc (%)")
