@@ -8,93 +8,146 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import re
 import math
+from pathlib import Path
 
 # Constants
 BENCHMARK_COL = 'benchmark'
 GLIBC_NAME = 'ptmalloc2'
-SUBPLOTS_PER_FIGURE = 12  # 3x4 layout
-NROWS, NCOLS = 3, 4
+DL_NAME = "dlmalloc"
+MI_NAME = "mimalloc"
+THINGS_TO_COMPARE=['mean','median','mad']
 
-def parse_columns(columns):
+
+def parse_columns(columns, things_to_compare=None):
     """
-    Parse the columns to identify (malloc, metric) pairs.
-    Returns: metric -> list of (malloc, column name)
+    Build:
+      {
+        thing_1: [(malloc, col), ...],
+        thing_2: [(malloc, col), ...],
+        ...
+      }
+    where each 'thing' comes from THINGS_TO_COMPARE (e.g., mean/median/mad),
+    matched by column suffix: "<malloc>_<...>_<thing>" OR "<malloc>_<thing>".
     """
-    colmap = {}
+    suffixes = things_to_compare if things_to_compare is not None else THINGS_TO_COMPARE
+    out = {thing: [] for thing in suffixes}
+
     for col in columns:
         if col == BENCHMARK_COL:
             continue
-        match = re.match(r'([^_]+)_(.+)', col)
-        if not match:
+        m = re.match(r'^([^_]+)_(.+)$', col)
+        if not m:
             continue
-        malloc, metric = match.groups()
-        colmap.setdefault(metric, []).append((malloc, col))
-    return colmap
+        malloc, rest = m.groups()
 
-def prepare_precent_differences(df, malloc_columns):
-    """
-    Prepare a DataFrame with percent differences relative to glibc.
-    Returns: DataFrame with benchmarks as index and mallocs as columns.
-    """
-    df = df.set_index(BENCHMARK_COL)
-    percent_diffs = {}
-    for malloc, col in malloc_columns:
-        percent_diffs[malloc] = df[col]
+        # attach the column to the first matching thing (in the given order)
+        for thing in suffixes:
+            if rest == thing or rest.endswith(f"_{thing}"):
+                out[thing].append((malloc, col))
+                break  # stop at first match to avoid double-counting
 
-    # Create a new DataFrame with benchmarks as index
-    result_df = pd.DataFrame(percent_diffs)
-    
-    # Compute percent differences relative to glibc
-    glibc_col = result_df[GLIBC_NAME]
-    for malloc in result_df.columns:
-        if malloc != GLIBC_NAME:
-            result_df[malloc] = 100 * (result_df[malloc] / glibc_col - 1.0)
-    
-    return result_df
+    for thing in out:
+        out[thing].sort(key=lambda t: t[0])
+
+    return out
+
+
 
 def plot_metric(df, metric, malloc_columns, output):
     """
     Generate a single PDF with subplots showing relative % difference to glibc.
     """
-    df.dropna(inplace=True)
+    pdf = PdfPages(output)
     num_benchmarks = len(df)
-    differences = prepare_precent_differences(df, malloc_columns)
-    num_mallocs = len(differences.columns)
-    benchmarks = differences.index.tolist()
-    mallocs = [m for m in differences.columns if m != GLIBC_NAME]
+    num_figures = math.ceil(num_benchmarks / SUBPLOTS_PER_FIGURE)
 
-    all_values = pd.concat([differences[m] for m in mallocs])
-    y_min = min(-10, all_values.min() - 10)
-    y_max = max(10, all_values.max() + 10)
+    for fig_idx in range(num_figures):
+        fig, axes = plt.subplots(NROWS, NCOLS, figsize=(16, 10))
+        axes = axes.flatten()
 
-    with PdfPages(output) as pdf:
-        for malloc in mallocs:
-            plt.figure(figsize=(10, 6))
-            y = differences[malloc]
-            y_sorted = y.sort_values(ascending=False)
-            plt.bar(y_sorted.index, y_sorted, color='skyblue')
-            plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-            plt.title(f"{malloc}: % Difference vs {GLIBC_NAME} ({metric})")
-            plt.xlabel("Benchmark")
-            plt.ylabel("Percent Difference (%)")
-            plt.xticks(rotation=45, ha='right', fontsize=8)
-            plt.tight_layout()
-            plt.ylim(y_min, y_max)
-            pdf.savefig()
-            plt.close()
+        for i in range(SUBPLOTS_PER_FIGURE):
+            row_idx = fig_idx * SUBPLOTS_PER_FIGURE + i
+            if row_idx >= num_benchmarks:
+                axes[i].axis('off')
+                continue
+
+            row = df.iloc[row_idx]
+            benchmark = row[BENCHMARK_COL]
+
+            values = {}
+            glibc_val = None
+            for malloc, col in malloc_columns:
+                val = row[col]
+                if pd.isna(val):
+                    continue
+                values[malloc] = val
+                if malloc == GLIBC_NAME:
+                    glibc_val = val
+
+            if glibc_val is None or glibc_val == 0:
+                axes[i].set_title(f"{benchmark} (glibc missing/zero)")
+                axes[i].axis('off')
+                continue
+
+            # Compute percent difference to glibc
+            percent_diffs = {
+                m: 100 * (v / glibc_val - 1.0)
+                for m, v in values.items() if m != GLIBC_NAME
+            }
+
+            mallocs = list(percent_diffs.keys())
+            diffs = [percent_diffs[m] for m in mallocs]
+            x = np.arange(len(mallocs))
+            bar_width = 0.2
+            axes[i].bar(x, diffs, width=bar_width, color=plt.cm.tab10.colors[:len(mallocs)])
+            axes[i].set_xticks(x)
+            axes[i].set_xticklabels(mallocs, rotation=45)
+
+            # Adjust x-limits only when needed
+            if len(mallocs) == 1:
+                axes[i].set_xlim(-0.5, 0.5)
+            else:
+                axes[i].set_xlim(-0.5, len(mallocs) - 0.5)
+
+            axes[i].axhline(0, color='black', linestyle='--', linewidth=0.8)
+            axes[i].set_title(benchmark)
+            axes[i].tick_params(axis='x', rotation=45)
+            
+            # Only show ylabel on leftmost subplots
+            if i % NCOLS == 0:
+                axes[i].set_ylabel(f'relative {metric} to glibc [%]')
+            else:
+                axes[i].set_ylabel("")
+
+            axes[i].grid(True, linestyle=':', linewidth=0.5)
+
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    pdf.close()
   
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot a single metric across benchmarks.')
     parser.add_argument('-o', '--output', type=str, required=True, help='PDF file')
     parser.add_argument('-m', '--metric', required=True, help='Metric name to plot')
     args = parser.parse_args()
-    df = pd.read_csv(sys.stdin)
-    colmap = parse_columns(df.columns)
 
-    if args.metric not in colmap:
-        print(f"Error: Metric '{args.metric}' not found in CSV headers.", file=sys.stderr)
-        print(f"Available metrics: {list(colmap.keys())}", file=sys.stderr)
-        sys.exit(1)
+    # Read CSV
+    if args.input == "-" or args.input == "":
+        df = pd.read_csv(sys.stdin)
+    else:
+        df = pd.read_csv(args.input)
 
-    malloc_columns = colmap[args.metric]
-    plot_metric(df, args.metric, malloc_columns, args.output)
+    # Parse and compute diffs
+    colmap = parse_columns(df.columns, THINGS_TO_COMPARE)
+    diffs_by_thing = prepare_precent_differences(df, colmap, THINGS_TO_COMPARE, eps_factor=args.eps_factor, eps_floor=args.eps_floor)
+
+    # Export csvs
+    if args.csv_dir:
+        export_diffs_to_csvs(diffs_by_thing, args.csv_dir, float_precision=args.float_precision)
+    # Plot
+    plot_ranked_percent_diffs(diffs_by_thing, args.output)
+
+if __name__ == "__main__":
+    main()
