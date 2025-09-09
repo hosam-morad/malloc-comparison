@@ -6,6 +6,7 @@ import time
 import subprocess
 import shutil
 import shlex
+import csv
 from os.path import join, getsize, islink
 
 class BenchmarkRun:
@@ -22,6 +23,8 @@ class BenchmarkRun:
 
         log_file_name = self._output_dir + '/benchmark.log'
         self._log_file = open(log_file_name, 'w')
+        self._time_out_file=None
+        self.repeated=False
 
     def __del__(self):
         if hasattr(self, "_log_file"):
@@ -44,18 +47,42 @@ class BenchmarkRun:
         self._run_process = subprocess.Popen(shlex.split(submit_command + ' ./run.sh'),
                 stdout=self._log_file, stderr=self._log_file, env=environment_variables)
 
-    def wait(self):
+    def wait(self,num_threads, submit_command):
         print('waiting for the run to complete...')
-        self._run_process.wait()
-        if self._run_process.returncode != 0:
-            raise subprocess.CalledProcessError(self._run_process.returncode, ' '.join(self._run_process.args))
-        print('sleeping a bit to let the filesystem recover...')
-        time.sleep(3) # seconds
+        time_out_path = self._output_dir + '/time.out'
+        c=0
+        while True :
+            self._run_process.wait()
+            with open(time_out_path, 'r') as f:
+                current_time_out = {k.strip(): float(v) for k, v in csv.reader(f)}
+                currentSeconds=current_time_out['seconds-elapsed']
+                if self.repeated == False and currentSeconds >= 30 and self._run_process.returncode != 0:
+                    raise subprocess.CalledProcessError(self._run_process.returncode, ' '.join(self._run_process.args))
+                    break 
+                if  self._time_out_file==None:
+                    print("temp has been saved")
+                    self._time_out_file=current_time_out
+                else :
+                    for key in current_time_out.keys():
+                        self._time_out_file[key]+=current_time_out[key]
+            if self._time_out_file['seconds-elapsed'] <30 :
+                self.repeated = True
+                time.sleep(1) # seconds
+                self.run(num_threads, submit_command)
+                continue 
+            else: 
+                break 
+        if self.repeated:
+            with open(time_out_path, "w") as f:
+                writer = csv.writer(f)
+                writer.writerows(self._time_out_file.items())
+
 
     def postrun(self):
         print('validating the run outputs...')
         os.chdir(self._output_dir)
-        subprocess.check_call('./postrun.sh', stdout=self._log_file, stderr=self._log_file)
+        if self.repeated==False:
+            subprocess.check_call('./postrun.sh', stdout=self._log_file, stderr=self._log_file)
 
     def clean(self, exclude_files=[], threshold=1024*1024):
         print('cleaning large files from the output directory...')
@@ -100,6 +127,6 @@ if __name__ == "__main__":
         benchmark_run = BenchmarkRun(args.benchmark_dir, args.output_dir)
         benchmark_run.prerun()
         benchmark_run.run(args.num_threads, args.submit_command)
-        benchmark_run.wait()
+        benchmark_run.wait(args.num_threads, args.submit_command)
         benchmark_run.postrun()
         benchmark_run.clean(args.exclude_files)
