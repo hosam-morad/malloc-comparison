@@ -23,8 +23,8 @@ class BenchmarkRun:
 
         log_file_name = self._output_dir + '/benchmark.log'
         self._log_file = open(log_file_name, 'w')
+        self.iterationEvaluated = False
         self.iterations = self.get_num_iterations() 
-        self.repeated = True if self.iterations > 1 else False
         self._time_out_file=None
         self.minRunTime = 30 
     def __del__(self):
@@ -49,8 +49,9 @@ class BenchmarkRun:
                     iterations = kv.get("iterations")
                     if iterations is not None:
                         it = int(float(iterations))
+                        self.iterationEvaluated = True
                         break 
-        print(f"the number of init iterations is {it}")
+        #print(f"the number of init iterations is {it}")
         return it
     def prerun(self):
         print('warming up before running...')
@@ -86,12 +87,13 @@ class BenchmarkRun:
                         self._time_out_file[key]+=current_time_out[key]
 
                 #the section above is for agregating the result of the runs 
-            if self._time_out_file['seconds-elapsed']  < self.minRunTime and self.repeated == False:
+            if self._time_out_file['seconds-elapsed']  < self.minRunTime and self.iterationEvaluated == False:
                 # current run time isn't enough we have to perform a loop
-                self.iterations = self. minRunTime // currentSeconds + 1
+                #print('evalutaed ')
+                self.iterations = iters = int(self.minRunTime // currentSeconds) + 1
                 it = self.iterations
                 #print(f"new iterations number is : f{it}")
-                self.repeated=True
+                self.iterationEvaluated=True
                 self._time_out_file=None
                 self.run(num_threads,submit_command)
                 continue
