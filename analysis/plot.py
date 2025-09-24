@@ -16,6 +16,9 @@ GLIBC_NAME = 'ptmalloc2'
 DL_NAME = "dlmalloc"
 MI_NAME = "mimalloc"
 THINGS_TO_COMPARE=['mean','median','mad']
+# Plot scale tuning
+SYMLOG_LINTHRESH = 5.0   # half-width (in %) of the linear region around 0
+SYMLOG_LINSCALE  = 1.0   # visual scaling of that linear region
 
 
 def parse_columns(columns, things_to_compare=None):
@@ -146,53 +149,67 @@ def export_diffs_to_csvs(diffs_by_thing, out_dir, float_precision=6):
         _write_csv("abs_median.csv", med.abs())
 
 # ---------------- Diff computation (epsilon) ----------------
-def prepare_precent_differences(df, colmap, things_to_compare=None, eps_factor=0.5, eps_floor=None):
+def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
     """
-    Compute % differences vs GLIBC_NAME for each 'thing' using epsilon policy.
-    Baseline column (GLIBC_NAME) is NOT included in outputs.
-
-    Returns: {thing: DataFrame(index=benchmark, columns=[mallocs excluding baseline])}
+    Create 4 figures into one PDF.
+    On the MEAN panel: draw envelope lines mean±MAD% (two extra lines per allocator).
     """
-    suffixes = things_to_compare if things_to_compare is not None else THINGS_TO_COMPARE
-    if BENCHMARK_COL not in df.columns:
-        raise ValueError(f"Missing required column '{BENCHMARK_COL}'.")
-    work = df.set_index(BENCHMARK_COL, drop=True)
+    from matplotlib.backends.backend_pdf import PdfPages
+    with PdfPages(output_pdf) as pdf:
+        def _draw(metric_name, df, use_abs=False):
+            if df is None or df.empty:
+                return
+            cols = [c for c in [DL_NAME, MI_NAME] if c in df.columns] or list(df.columns)
 
-    global_floor = (np.finfo(float).eps if eps_floor is None else float(eps_floor))
-    out = {}
+            fig, ax = plt.subplots(figsize=(10, 6))
 
-    for thing in suffixes:
-        pairs = colmap.get(thing, [])
-        if not pairs:
-            continue
-        cols_by_malloc = {m: c for (m, c) in pairs}
-        if GLIBC_NAME not in cols_by_malloc:
-            raise ValueError(
-                f"Baseline '{GLIBC_NAME}' not found for '{thing}'. "
-                f"Available mallocs: {sorted(cols_by_malloc.keys())}"
-            )
-        # All malloc values for this 'thing'
-        vals_df = pd.DataFrame({m: work[c] for (m, c) in pairs}, index=work.index)
+            # Keep symlog only for the mean (non-abs) panel
+            if metric_name == "mean" and not use_abs:
+                ax.set_yscale('symlog', linthresh=SYMLOG_LINTHRESH, linscale=SYMLOG_LINSCALE)
 
-        # Row-wise epsilon: half of the smallest positive value in the row (across mallocs)
-        row_min_pos = vals_df.where(vals_df > 0).min(axis=1)  # NaN if no positives
-        eps_series = (row_min_pos * eps_factor).fillna(global_floor)
+            colors = ['tab:blue', 'tab:orange']
+            mad_frame = madpct_by_thing.get(metric_name) if madpct_by_thing is not None else None
 
-        # Baseline with epsilon substituted where 0 or NaN
-        baseline_series = work[cols_by_malloc[GLIBC_NAME]]
-        base = baseline_series.where(baseline_series.notna() & (baseline_series != 0), eps_series)
+            for i, col in enumerate(cols):
+                color = colors[i % len(colors)]
+                s = df[col].dropna()
+                s_sorted = (s.abs().sort_values() if use_abs else s.sort_values())
+                x = np.arange(1, len(s_sorted) + 1)
+                y = s_sorted.values
 
-        # % diff vs baseline for all mallocs
-        diffs_all = 100.0 * (vals_df.div(base, axis=0) - 1.0)
+                # Plot the main mean/median/MAD line
+                ax.plot(x, y, label=col, color=color, linewidth=1.8, zorder=3)
 
-        # Drop baseline column, keep original order of pairs (excluding baseline)
-        ordered_cols = [m for (m, _) in pairs if m != GLIBC_NAME]
-        if not ordered_cols:
-            continue
-        diffs = diffs_all.reindex(columns=ordered_cols)
+                # For MEAN panel only, add envelope lines: mean ± MAD%
+                if (metric_name == "mean") and (not use_abs) and (mad_frame is not None) and (col in mad_frame.columns):
+                    mad_sorted = mad_frame[col].reindex(s_sorted.index).values
+                    upper = y + mad_sorted
+                    lower = y - mad_sorted
 
-        out[thing] = diffs
-    return out
+                    # Two visually distinct styles
+                    ax.plot(x, upper, color=color, linestyle='--', linewidth=1.0, alpha=0.9,
+                            label=f"{col} +MAD", zorder=2)
+                    ax.plot(x, lower, color=color, linestyle=':', linewidth=1.0, alpha=0.9,
+                            label=f"{col} -MAD", zorder=2)
+
+                # Horizontal mean line (same as before)
+                mean_val = np.nanmean(np.abs(df[col].values)) if use_abs else np.nanmean(df[col].values)
+                ax.axhline(mean_val, linestyle="--", linewidth=1, label=f"mean({col})", color=color, alpha=0.7, zorder=1)
+
+            ax.set_xlabel("Rank (sorted per line)")
+            ax.set_ylabel("Percent difference vs glibc (%)")
+            ax.set_title(f"{metric_name} % diff vs glibc {'(absolute)' if use_abs else ''}".strip())
+            ax.legend()
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)  # now shows mean±MAD envelopes
+        _draw("median", diffs_by_thing.get("median"), use_abs=False)
+        _draw("mad",    diffs_by_thing.get("mad"),    use_abs=False)
+        _draw("median", diffs_by_thing.get("median"), use_abs=True)
+
+
 
 # ---------------- Excel export ----------------
 def export_diffs_to_excels(diffs_by_thing, out_dir):
@@ -241,53 +258,100 @@ def _rank_series_abs(s):
     y = s_sorted.values
     return x, y
 
-def plot_ranked_percent_diffs(diffs_by_thing, output_pdf):
-    """
-    Create 4 figures into one PDF:
-      1) mean:   ranked lines for dlmalloc & mimalloc (no abs)
-      2) median: ranked lines for dlmalloc & mimalloc (no abs)
-      3) mad:    ranked lines for dlmalloc & mimalloc (no abs)
-      4) abs_median: ranked lines for |median| diffs
+def compute_yerr_from_mad_in_csv(df, colmap, eps_factor=0.5, eps_floor=None):
+    if BENCHMARK_COL not in df.columns:
+        raise ValueError(f"Missing required column '{BENCHMARK_COL}'.")
+    work = df.set_index(BENCHMARK_COL, drop=True)
 
-    Each figure also draws horizontal lines at the arithmetic mean of the displayed y-values.
+    pairs_mean = colmap.get('mean', [])
+    pairs_mad  = colmap.get('mad', [])
+    if not pairs_mean or not pairs_mad:
+        return {'mean': None}
+
+    mean_cols = {m: c for (m, c) in pairs_mean}
+    mad_cols  = {m: c for (m, c) in pairs_mad}
+    if GLIBC_NAME not in mean_cols:
+        raise ValueError("Baseline mean for glibc not found.")
+
+    global_floor = (np.finfo(float).eps if eps_floor is None else float(eps_floor))
+    vals_mean_df = pd.DataFrame({m: work[c] for (m, c) in pairs_mean}, index=work.index)
+    row_min_pos  = vals_mean_df.where(vals_mean_df > 0).min(axis=1)
+    eps_series   = (row_min_pos * eps_factor).fillna(global_floor)
+
+    base_glibc_mean = work[mean_cols[GLIBC_NAME]]
+    base = base_glibc_mean.where(base_glibc_mean.notna() & (base_glibc_mean != 0), eps_series)
+
+    allocs = [m for (m, _) in pairs_mean if m != GLIBC_NAME]
+    yerr = {}
+    for m in allocs:
+        if m in mad_cols:
+            mad_series = work[mad_cols[m]]
+            yerr[m] = 100.0 * mad_series.div(base, axis=0)  # MAD seconds -> MAD percent of glibc mean
+        else:
+            yerr[m] = pd.Series(np.nan, index=work.index)
+
+    return {'mean': pd.DataFrame(yerr, index=work.index)}
+
+
+def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
     """
+    Create 4 figures into one PDF.
+    On the MEAN panel: draw envelope lines mean±MAD% (two extra lines per allocator).
+    """
+    from matplotlib.backends.backend_pdf import PdfPages
     with PdfPages(output_pdf) as pdf:
-        # Helper to draw one figure
         def _draw(metric_name, df, use_abs=False):
             if df is None or df.empty:
                 return
-            cols = [c for c in [DL_NAME, MI_NAME] if c in df.columns]
-            if not cols:
-                cols = list(df.columns)
+            cols = [c for c in [DL_NAME, MI_NAME] if c in df.columns] or list(df.columns)
 
             fig, ax = plt.subplots(figsize=(10, 6))
 
+            # Keep symlog only for the mean (non-abs) panel
+            if metric_name == "mean" and not use_abs:
+                ax.set_yscale('symlog', linthresh=SYMLOG_LINTHRESH, linscale=SYMLOG_LINSCALE)
+
             colors = ['tab:blue', 'tab:orange']
+            mad_frame = madpct_by_thing.get(metric_name) if madpct_by_thing is not None else None
+
             for i, col in enumerate(cols):
-                if use_abs:
-                    x, y = _rank_series_abs(df[col])
-                    mean_val = np.nanmean(np.abs(df[col].values))
-                    label = f"{col} (abs)"
-                else:
-                    x, y = _rank_series(df[col])
-                    mean_val = np.nanmean(df[col].values)
-                    label = f"{col}"
-                ax.plot(x, y, label=label, color=colors[i % len(colors)])
-                ax.axhline(mean_val, linestyle="--", linewidth=1, label=f"mean({label})", color=colors[i % len(colors)])
+                color = colors[i % len(colors)]
+                s = df[col].dropna()
+                s_sorted = (s.abs().sort_values() if use_abs else s.sort_values())
+                x = np.arange(1, len(s_sorted) + 1)
+                y = s_sorted.values
+
+                # Plot the main mean/median/MAD line
+                ax.plot(x, y, label=col, color=color, linewidth=1.8, zorder=3)
+
+                # For MEAN panel only, add envelope lines: mean ± MAD%
+                if (metric_name == "mean") and (not use_abs) and (mad_frame is not None) and (col in mad_frame.columns):
+                    mad_sorted = mad_frame[col].reindex(s_sorted.index).values
+                    upper = y + mad_sorted
+                    lower = y - mad_sorted
+
+                    # Two visually distinct styles
+                    ax.plot(x, upper, color=color, linestyle='--', linewidth=1.0, alpha=0.9,
+                            label=f"{col} +MAD", zorder=2)
+                    ax.plot(x, lower, color=color, linestyle=':', linewidth=1.0, alpha=0.9,
+                            label=f"{col} -MAD", zorder=2)
+
+                # Horizontal mean line (same as before)
+                mean_val = np.nanmean(np.abs(df[col].values)) if use_abs else np.nanmean(df[col].values)
+                ax.axhline(mean_val, linestyle="--", linewidth=1, label=f"mean({col})", color=color, alpha=0.7, zorder=1)
 
             ax.set_xlabel("Rank (sorted per line)")
             ax.set_ylabel("Percent difference vs glibc (%)")
-            title_suffix = "(absolute)" if use_abs else ""
-            ax.set_title(f"{metric_name} % diff vs glibc {title_suffix}".strip())
+            ax.set_title(f"{metric_name} % diff vs glibc {'(absolute)' if use_abs else ''}".strip())
             ax.legend()
             fig.tight_layout()
             pdf.savefig(fig)
             plt.close(fig)
 
-        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)
+        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)  # now shows mean±MAD envelopes
         _draw("median", diffs_by_thing.get("median"), use_abs=False)
         _draw("mad",    diffs_by_thing.get("mad"),    use_abs=False)
-        _draw("median", diffs_by_thing.get("median"), use_abs=True)  # abs median
+        _draw("median", diffs_by_thing.get("median"), use_abs=True)
 
   
 # ---------------- CLI ----------------
@@ -307,15 +371,21 @@ def main():
     else:
         df = pd.read_csv(args.input)
 
-    # Parse and compute diffs
     colmap = parse_columns(df.columns, THINGS_TO_COMPARE)
-    diffs_by_thing = prepare_precent_differences(df, colmap, THINGS_TO_COMPARE, eps_factor=args.eps_factor, eps_floor=args.eps_floor)
+    diffs_by_thing = prepare_precent_differences(
+        df, colmap, THINGS_TO_COMPARE,
+        eps_factor=args.eps_factor, eps_floor=args.eps_floor
+    )
 
-    # Export csvs
+    madpct_by_thing = compute_yerr_from_mad_in_csv(
+        df, colmap, eps_factor=args.eps_factor, eps_floor=args.eps_floor
+    )
+
     if args.csv_dir:
         export_diffs_to_csvs(diffs_by_thing, args.csv_dir, float_precision=args.float_precision)
-    # Plot
-    plot_ranked_percent_diffs(diffs_by_thing, args.output)
+
+    plot_ranked_percent_diffs(diffs_by_thing, args.output, madpct_by_thing=madpct_by_thing)
+
 
 if __name__ == "__main__":
     main()
