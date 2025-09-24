@@ -2,7 +2,7 @@ MODULE_NAME := experiments
 SUBMODULES := $(addprefix $(MODULE_NAME)/,$(MALLOC_VERSIONS))
 
 ifndef NUM_OF_REPEATS
-NUM_OF_REPEATS := 3
+NUM_OF_REPEATS := 1
 endif # ifndef NUM_OF_REPEATS
 
 BENCHMARK_LIST := experiments/benchmark_list.txt

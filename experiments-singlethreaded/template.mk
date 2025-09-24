@@ -18,7 +18,7 @@ $(MEASUREMENTS): experiments-prerequisites
 	echo ========== [INFO] start MALLOC_VERSION ==========
 	benchmark=$$(echo $(dir $@) | cut -d/ -f3-4); \
 	BINDNODE=$(BOUND_MEMORY_NODE); \
-	$(RUN_BENCHMARK) --num_threads 1 \
+	$(RUN_BENCHMARK) --exclude gmon.* --num_threads 1 \
 		--submit_command "$(MEASURE_METRICS) $(SET_CPU_MEMORY_AFFINITY) $$BINDNODE \
 		$(RUN_MALLOC_TOOL) --library $(MALLOC_VERSION_TOOL)" -- $(benchmarks_root)/$$benchmark $(dir $@)
 
