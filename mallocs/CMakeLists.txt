@@ -22,6 +22,10 @@ add_definitions(-DTHREAD_SAFETY)
 include(CompilerFlags.cmake)
 # List of all malloc implementation subdirs
 
+# Also pass -pg at link time (needed for gprof)
+set(CMAKE_EXE_LINKER_FLAGS   "${CMAKE_EXE_LINKER_FLAGS} -pg")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
+
 set(MALLOC_VERSIONS
     # glibcmalloc
     dlmalloc
