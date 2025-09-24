@@ -6,6 +6,7 @@ import time
 import subprocess
 import shutil
 import shlex
+import csv
 from os.path import join, getsize, islink
 
 class BenchmarkRun:
@@ -22,11 +23,36 @@ class BenchmarkRun:
 
         log_file_name = self._output_dir + '/benchmark.log'
         self._log_file = open(log_file_name, 'w')
-
+        self.iterationEvaluated = False
+        self.iterations = self.get_num_iterations() 
+        self._time_out_file=None
+        self.minRunTime = 30 
     def __del__(self):
         if hasattr(self, "_log_file"):
             self._log_file.close()
 
+    def get_num_iterations(self):
+        # this fucntion checks if there any repetitions of all the 
+        norm = os.path.normpath(self._output_dir)           
+        pathsplitted = [p for p in norm.split(os.sep) if p]  
+        pathsplittedUnrepeated=pathsplitted[:-1]
+        mallocs = ['mimalloc','dlmalloc','ptmalloc2']
+        indexOfMalloc=4
+        it = 1
+        for malloc in mallocs:
+            tempL=pathsplittedUnrepeated.copy()
+            tempL[4]=malloc 
+            time_out_path_abs = os.path.join(os.sep, *tempL, "repeat1", "time.out")        
+            if os.path.exists(time_out_path_abs) == True:
+                with open (time_out_path_abs,"r") as f:
+                    kv = {k.strip(): v.strip() for k, v in csv.reader(f) if k}
+                    iterations = kv.get("iterations")
+                    if iterations is not None:
+                        it = int(float(iterations))
+                        self.iterationEvaluated = True
+                        break 
+        #print(f"the number of init iterations is {it}")
+        return it
     def prerun(self):
         print('warming up before running...')
         os.chdir(self._output_dir)
@@ -44,11 +70,47 @@ class BenchmarkRun:
         self._run_process = subprocess.Popen(shlex.split(submit_command + ' ./run.sh'),
                 stdout=self._log_file, stderr=self._log_file, env=environment_variables)
 
-    def wait(self):
+    def wait(self,num_threads, submit_command):
         print('waiting for the run to complete...')
-        self._run_process.wait()
-        if self._run_process.returncode != 0:
-            raise subprocess.CalledProcessError(self._run_process.returncode, ' '.join(self._run_process.args))
+        time_out_path = self._output_dir + '/time.out'
+        it = self.iterations
+        while True:
+            self._run_process.wait()
+            with open(time_out_path, 'r') as f:
+                current_time_out = {k.strip(): float(v) for k, v in csv.reader(f)}
+                currentSeconds=current_time_out['seconds-elapsed']
+                if  self._time_out_file==None:
+                    #print("temp has been saved")
+                    self._time_out_file=current_time_out
+                else :
+                    for key in current_time_out.keys():
+                        self._time_out_file[key]+=current_time_out[key]
+
+                #the section above is for agregating the result of the runs 
+            if self._time_out_file['seconds-elapsed']  < self.minRunTime and self.iterationEvaluated == False:
+                # current run time isn't enough we have to perform a loop
+                #print('evalutaed ')
+                self.iterations = iters = int(self.minRunTime // currentSeconds) + 1
+                it = self.iterations
+                #print(f"new iterations number is : f{it}")
+                self.iterationEvaluated=True
+                self._time_out_file=None
+                self.run(num_threads,submit_command)
+                continue
+            #print(" passed the first run and a new run time has been calculated ")
+            it -= 1
+            #print (f'it ={it} and self itertations={self.iterations}')
+            if it > 0:
+                self.run(num_threads,submit_command)
+                continue
+            elif self._run_process.returncode != 0:
+                raise subprocess.CalledProcessError(self._run_process.returncode, ' '.join(self._run_process.args))
+            else:
+                break
+        with open(time_out_path, "w") as f:
+            self._time_out_file['iterations']=self.iterations
+            writer = csv.writer(f)
+            writer.writerows(self._time_out_file.items())
         print('sleeping a bit to let the filesystem recover...')
         time.sleep(3) # seconds
 
@@ -100,6 +162,6 @@ if __name__ == "__main__":
         benchmark_run = BenchmarkRun(args.benchmark_dir, args.output_dir)
         benchmark_run.prerun()
         benchmark_run.run(args.num_threads, args.submit_command)
-        benchmark_run.wait()
+        benchmark_run.wait(args.num_threads, args.submit_command)
         benchmark_run.postrun()
         benchmark_run.clean(args.exclude_files)
