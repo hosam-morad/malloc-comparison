@@ -45,19 +45,59 @@ if __name__ == '__main__':
     if not repeats:
         repeats = ['repeat1', 'repeat2', 'repeat3']
 
-    # Build DataFrame columns: first column is identifier 'benchmark-malloc', then one
-    # column per repeat per metric (e.g. repeat1_run_time)
-    columns_label = ['benchmark_malloc']
+    # Build DataFrame columns: first column is identifier 'benchmark-malloc',
+    # then an 'iterations' column, then one column per repeat per metric
+    columns_label = ['benchmark_malloc', 'iterations']
     for r in repeats:
         for metric in args.metrics:
             columns_label.append(f"{r}_{metric}")
     res_df = pd.DataFrame(columns=columns_label)
 
+    # First pass: collect per-benchmark iteration counts from all repeats/mallocs.
+    # If a time.csv doesn't have 'iterations', treat it as 1. Warn if inconsistent
+    # values are found for the same benchmark across repeats/mallocs.
+    bench_iterations = {b: set() for b in benchmarks}
+    for b in benchmarks:
+        for m in mallocs:
+            for r in repeats:
+                time_csv = os.path.join('results', m, b, r, 'time.csv')
+                if not os.path.exists(time_csv):
+                    continue
+                try:
+                    df = pd.read_csv(time_csv)
+                except Exception:
+                    # skip files we can't read; iteration info won't be available
+                    continue
+                if 'iterations' in df.columns:
+                    try:
+                        iter_val = int(df['iterations'].iloc[0])
+                    except Exception:
+                        try:
+                            iter_val = int(float(df['iterations'].iloc[0]))
+                        except Exception:
+                            iter_val = 1
+                else:
+                    iter_val = 1
+                bench_iterations[b].add(iter_val)
+
+    # Decide final iteration value per benchmark and emit warnings on inconsistencies
+    bench_iterations_final = {}
+    for b, s in bench_iterations.items():
+        if not s:
+            bench_iterations_final[b] = None
+        elif len(s) == 1:
+            bench_iterations_final[b] = next(iter(s))
+        else:
+            # inconsistent; choose the max but warn the user
+            chosen = max(s)
+            print(f"Warning: inconsistent iterations for benchmark {b}: found {sorted(s)}; using {chosen}", file=sys.stderr)
+            bench_iterations_final[b] = chosen
+
     # Populate rows: one row per (benchmark, malloc) pair
     for benchmark in benchmarks:
         for malloc in mallocs:
             row_id = f"{benchmark}-{malloc}"
-            results = [row_id]
+            results = [row_id, bench_iterations_final.get(benchmark)]
             for r in repeats:
                 time_csv = os.path.join('results', malloc, benchmark, r, 'time.csv')
                 if not os.path.exists(time_csv):

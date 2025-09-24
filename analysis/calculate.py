@@ -22,17 +22,20 @@ if __name__ == '__main__':
     with open(args.mallocs) as f:
         mallocs = [line.strip() for line in f if line.strip()]
 
-    # Build DataFrame columns
-    columns_label = ['benchmark']
-    for malloc in mallocs:
-        for metric in args.metrics:
-            columns_label.append(f"{malloc}_{metric}_mean")
-            columns_label.append(f"{malloc}_{metric}_median")
-            columns_label.append(f"{malloc}_{metric}_mad")
-    res_df = pd.DataFrame(columns=columns_label)
+        # Build DataFrame columns (add iterations column)
+        columns_label = ['benchmark', 'iterations']
+        for malloc in mallocs:
+            for metric in args.metrics:
+                columns_label.append(f"{malloc}_{metric}_mean")
+                columns_label.append(f"{malloc}_{metric}_median")
+                columns_label.append(f"{malloc}_{metric}_mad_pct")
+        res_df = pd.DataFrame(columns=columns_label)
 
     for benchmark in benchmarks:
-        results = [benchmark]
+        # reserve slot for iterations (filled after scanning all repeats/mallocs)
+        results = [benchmark, None]
+        iterations_set = set()
+
         for malloc in mallocs:
             paths = glob.glob(f'results/{malloc}/{benchmark}/repeat*/time.csv')
             time_dfs = []
@@ -40,6 +43,20 @@ if __name__ == '__main__':
                 try:
                     df = pd.read_csv(p)
                     time_dfs.append(df)
+
+                    # explicit "iterations" column handling (fallback to 1)
+                    if 'iterations' in df.columns:
+                        try:
+                            iter_val = int(df['iterations'].iloc[0])
+                        except Exception:
+                            try:
+                                iter_val = int(float(df['iterations'].iloc[0]))
+                            except Exception:
+                                iter_val = 1
+                    else:
+                        iter_val = 1
+                    iterations_set.add(iter_val)
+
                 except EmptyDataError:
                     print(f"Warning: Empty CSV file (no columns to parse): {p}", file=sys.stderr)
                 except Exception as e:
@@ -47,19 +64,32 @@ if __name__ == '__main__':
 
             if not time_dfs:
                 print(f"Warning: No valid time.csv files for {malloc}/{benchmark}", file=sys.stderr)
-                results.extend([None] * len(args.metrics))
+                # append three placeholders per metric (mean, median, mad_pct)
+                results.extend([None, None, None] * len(args.metrics))
             else:
                 for metric in args.metrics:
                     try:
                         metric_vals = [df[metrics[metric]].iloc[0] for df in time_dfs]
                         mean_val = np.mean(metric_vals)
                         median_val = np.median(metric_vals)
-                        mad_val = np.mean(np.abs(metric_vals - mean_val))  # Mean absolute deviation
-                        results.extend([mean_val, median_val, mad_val])
+                        mean_abs_dev = np.mean(np.abs(metric_vals - mean_val))  # Mean absolute deviation
+                        mad_pct = 0.0 if mean_val == 0 else (mean_abs_dev / mean_val) * 100.0
+                        results.extend([mean_val, median_val, mad_pct])
                     except Exception as e:
                         print(f"Missing {metric} in {malloc}/{benchmark}: {e}", file=sys.stderr)
-                        results.append(None)
-                        
+                        # append three placeholders for this metric
+                        results.extend([None, None, None])
+
+        # determine iterations value for this benchmark and warn on inconsistencies
+        if not iterations_set:
+            iterations_val = None
+        elif len(iterations_set) == 1:
+            iterations_val = next(iter(iterations_set))
+        else:
+            iterations_val = max(iterations_set)
+            print(f"Warning: inconsistent iterations for benchmark {benchmark}: found {sorted(iterations_set)}; using {iterations_val}", file=sys.stderr)
+
+        results[1] = iterations_val
         res_df.loc[len(res_df)] = results
 
     res_df.to_csv(sys.stdout, index=False, float_format=f"%.{args.precision}f")
