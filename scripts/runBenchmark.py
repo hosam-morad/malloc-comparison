@@ -7,6 +7,7 @@ import subprocess
 import shutil
 import shlex
 import csv
+import fnmatch
 from os.path import join, getsize, islink
 
 class BenchmarkRun:
@@ -63,9 +64,10 @@ class BenchmarkRun:
     def run(self, num_threads, submit_command):
         print('running the benchmark ' + self._benchmark_dir + '...')
         print('the full submit command is:\n\t' + submit_command + ' ./run.sh')
-        environment_variables = {"OMP_NUM_THREADS": str(num_threads),
-                "OMP_THREAD_LIMIT": str(num_threads)}
-        environment_variables.update(os.environ)
+        environment_variables =  os.environ.copy()
+        environment_variables["OMP_NUM_THREADS"] = str(num_threads)
+        environment_variables["OMP_THREAD_LIMIT"] = str(num_threads)
+        environment_variables["GMON_OUT_PREFIX"] = "gmon"
         os.chdir(self._output_dir)
         self._run_process = subprocess.Popen(shlex.split(submit_command + ' ./run.sh'),
                 stdout=self._log_file, stderr=self._log_file, env=environment_variables)
@@ -125,7 +127,7 @@ class BenchmarkRun:
             for name in files:
                 file_path = join(root, name)
                 # remove files larger than threshold (default is 1MB)
-                if (not islink(file_path)) and (getsize(file_path) > threshold) and (name not in exclude_files):
+                if (not islink(file_path)) and (getsize(file_path) > threshold) and (not any(__import__('fnmatch').fnmatch(name, pat) for pat in exclude_files)):
                     os.remove(file_path)
         print('syncing to clean all pending I/O activity...')
         os.sync()
@@ -141,8 +143,8 @@ def getCommandLineArguments():
             help='the number of threads (for multi-threaded benchmark)')
     parser.add_argument('-s', '--submit_command', type=str, default='',
             help='a command that will prefix running the benchmark, e.g., "perf stat --".')
-    parser.add_argument('-x', '--exclude_files', type=str, nargs='*', default=[],
-            help='list of files to not remove')
+    parser.add_argument('-x', '--exclude_files', '--exclude', dest='exclude_files',
+    type=str, nargs='*', default=[],help='list of file names or glob patterns to not remove (e.g., gmon.*)')
     parser.add_argument('-f', '--force', action='store_true', default=False,
             help='run the benchmark anyway even if the output directory already exists')
     parser.add_argument('benchmark_dir', type=str, help='the benchmark directory, must contain three \
