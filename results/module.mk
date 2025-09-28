@@ -1,5 +1,5 @@
 .PHONY: results
-results: results/copy_benchmarks results/copy_gmon
+results: results/copy_benchmarks results/copy_gmon results/merge
 
 # Copy the benchmark files once per bench into: results/<suite>/<bench>/benchmarkfile/
 .PHONY: results/copy_benchmarks
@@ -40,7 +40,7 @@ results/copy_gmon:
 
 # merge per repeat (no deletes, same style as manual)
 .PHONY: results/merge
-results/merge:
+results/merge:results/copy_benchmarks results/copy_gmon
 	@set -e; \
 	for b in $(benchmarks); do \
 	  runsh="results/$$b/benchmarkfile/run.sh"; \
