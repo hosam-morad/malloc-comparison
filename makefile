@@ -6,7 +6,7 @@ SHELL := /bin/bash
 
 MODULE_NAME := all
 
-benchmarks_root := /scratch/hosam.morad/benchmarks
+benchmarks_root := /scratch/bashar.ab/ubuntu20-pg
 export BENCHMARKS_ROOT = $(benchmarks_root)
 export ROOT_DIR := $(PWD)
 
@@ -15,7 +15,7 @@ MALLOCS_ROOT_DIR := $(ROOT_DIR)/mallocs
 
 ##### constants
 
-SUBMODULES := mallocs experiments results analysis
+SUBMODULES := mallocs experiments experiments-singlethreaded results analysis
 
 include $(ROOT_DIR)/workloads.mk
 include $(ROOT_DIR)/common.mk
