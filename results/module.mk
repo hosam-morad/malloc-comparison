@@ -5,7 +5,7 @@ kv_to_csv := results/kv_to_csv.py
 
 result_measurements_dirs := $(foreach malloc,$(MALLOC_VERSIONS), \
 	$(foreach bench,$(benchmarks), \
-		results/$(malloc)/$(bench)))
+		results/multi_threaded/$(malloc)/$(bench)))
 
 result_measurements := $(foreach dir,$(result_measurements_dirs), \
 	$(foreach repeat,$(REPEATS), \
@@ -21,16 +21,18 @@ single_result_measurements := $(foreach dir,$(single_result_measurements_dirs), 
 		$(dir)/$(repeat)/time.csv))
 
 ##### rules
-.PHONY: results results/single_threaded results/clean results/single_threaded_clean
+.PHONY: results results/multi_threaded results/single_threaded results/clean results/multi_threaded_clean results/single_threaded_clean
 
-results: $(result_measurements)
+results: $(result_measurements) $(single_result_measurements)
+
+results/multi_threaded: $(result_measurements)
 
 # results/%/time.csv: experiments/%/time.out
 # 	mkdir -p $(dir $@)
 # 	$(kv_to_csv) $< > $@
-results/%/time.csv:
+results/multi_threaded/%/time.csv:
 	mkdir -p $(dir $@)
-	$(kv_to_csv) $(patsubst results/%,experiments/%,$(basename $@).out) > $@
+	$(kv_to_csv) $(patsubst results/multi_threaded/%,experiments/%,$(basename $@).out) > $@
 
 # Single-threaded results target: generate results under results/single_threaded
 results/single_threaded: $(single_result_measurements)
@@ -40,6 +42,9 @@ results/single_threaded/%/time.csv:
 	$(kv_to_csv) $(patsubst results/single_threaded/%,experiments-singlethreaded/%,$(basename $@).out) > $@
 
 results/clean:
+	rm -f $(result_measurements) $(single_result_measurements)
+
+results/multi_threaded_clean:
 	rm -f $(result_measurements)
 
 results/single_threaded_clean:
