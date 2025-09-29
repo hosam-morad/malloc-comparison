@@ -19,6 +19,9 @@ single_analysis_csv := $(single_analysis_dir)/summary_$(analysis_metric).csv
 single_analysis_raw_csv := $(single_analysis_dir)/summary_raw_$(analysis_metric).csv
 single_analysis_pdf := $(single_analysis_dir)/summary_$(analysis_metric).pdf
 
+
+merge_analysis_dir := analysis/merged
+
 # put our ranked CSV outputs in the per-mode analysis dir when plotting
 multi_ranked_csvs := \
 	$(multi_analysis_dir)/mean.csv \
@@ -34,7 +37,7 @@ single_ranked_csvs := \
 
 ##### rules
 ##### rules
-.PHONY: analysis analysis/multi_threaded analysis/single_threaded analysis/clean analysis/multi_threaded_clean analysis/single_threaded_clean
+.PHONY: analysis analysis/multi_threaded analysis/single_threaded analysis/clean analysis/multi_threaded_clean analysis/single_threaded_clean analysis/merged
 
 # Top-level analysis builds both modes
 analysis: analysis/multi_threaded analysis/single_threaded
@@ -69,6 +72,19 @@ $(single_analysis_pdf): $(single_analysis_csv)
 	mkdir -p $(dir $@)
 	$(analysis_plot_ranked) -i $< -o $@ --csv-dir $(single_analysis_dir)
 
+merge_analysis_dir := analysis/merged
+
+# Dynamically generate the list of merged files based on single-threaded CSVs
+MERGED_CSV_FILES := $(patsubst $(single_analysis_dir)/%.csv,$(merge_analysis_dir)/%.csv,$(wildcard $(single_analysis_dir)/*.csv))
+
+# Rule to create the merged directory and ensure all merged files are generated
+analysis/merged: $(MERGED_CSV_FILES)
+	mkdir -p $(merge_analysis_dir)
+
+# Rule to merge single-threaded and multi-threaded CSVs into the merged directory
+$(merge_analysis_dir)/%.csv: $(single_analysis_dir)/%.csv $(multi_analysis_dir)/%.csv
+	mkdir -p $(dir $@)
+	python analysis/merge_csvs.py $(single_analysis_dir)/$*.csv $(single_analysis_dir) $(multi_analysis_dir)/$*.csv $(multi_analysis_dir) $@
 analysis/clean:
 	rm -f $(multi_analysis_csv) $(multi_analysis_pdf) $(multi_ranked_csvs) $(multi_analysis_raw_csv)
 	rm -f $(single_analysis_csv) $(single_analysis_pdf) $(single_ranked_csvs) $(single_analysis_raw_csv)
