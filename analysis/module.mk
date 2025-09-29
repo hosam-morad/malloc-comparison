@@ -7,36 +7,74 @@ analysis_plot_ranked := analysis/plot.py
 analysis_metric := run_time
 
 ##### outputs & dirs
-analysis_csv := analysis/summary_$(analysis_metric).csv
-# You can override this on the command line:
-#   make analysis analysis_raw_csv=analysis/raw_experiment42.csv
-analysis_raw_csv := analysis/summary_raw_$(analysis_metric).csv
-analysis_pdf := analysis/summary_$(analysis_metric).pdf
+# per-mode analysis directories
+multi_analysis_dir := analysis/multi_threaded
+single_analysis_dir := analysis/single_threaded
 
-# put our ranked Excel outputs directly in the existing analysis/ dir
-analysis_ranked_excel_dir := analysis
-analysis_ranked_csvs := \
-  $(analysis_ranked_excel_dir)/mean.csv \
-  $(analysis_ranked_excel_dir)/median.csv \
-  $(analysis_ranked_excel_dir)/mad.csv \
-  $(analysis_ranked_excel_dir)/abs_median.csv
+multi_analysis_csv := $(multi_analysis_dir)/summary_$(analysis_metric).csv
+multi_analysis_raw_csv := $(multi_analysis_dir)/summary_raw_$(analysis_metric).csv
+multi_analysis_pdf := $(multi_analysis_dir)/summary_$(analysis_metric).pdf
+
+single_analysis_csv := $(single_analysis_dir)/summary_$(analysis_metric).csv
+single_analysis_raw_csv := $(single_analysis_dir)/summary_raw_$(analysis_metric).csv
+single_analysis_pdf := $(single_analysis_dir)/summary_$(analysis_metric).pdf
+
+# put our ranked CSV outputs in the per-mode analysis dir when plotting
+multi_ranked_csvs := \
+	$(multi_analysis_dir)/mean.csv \
+	$(multi_analysis_dir)/median.csv \
+	$(multi_analysis_dir)/mad.csv \
+	$(multi_analysis_dir)/abs_median.csv
+
+single_ranked_csvs := \
+	$(single_analysis_dir)/mean.csv \
+	$(single_analysis_dir)/median.csv \
+	$(single_analysis_dir)/mad.csv \
+	$(single_analysis_dir)/abs_median.csv
 
 ##### rules
-.PHONY: analysis analysis/clean
+##### rules
+.PHONY: analysis analysis/multi_threaded analysis/single_threaded analysis/clean analysis/multi_threaded_clean analysis/single_threaded_clean
 
-# Build the PDF summary and (also) produce a raw CSV
-analysis: $(analysis_pdf) $(analysis_raw_csv)
+# Top-level analysis builds both modes
+analysis: analysis/multi_threaded analysis/single_threaded
 
-$(analysis_pdf): $(analysis_csv)
-	$(analysis_plot_ranked) -i $< -o $@ --csv-dir $(analysis_ranked_excel_dir)
+# Multi-threaded analysis: build CSVs and PDF under $(multi_analysis_dir)
+analysis/multi_threaded: $(multi_analysis_pdf) $(multi_analysis_raw_csv)
 
-# $(analysis_csv): $(result_measurements)
-$(analysis_csv):
-	$(analysis_calculate) -b $(BENCHMARK_LIST) -met $(analysis_metric) -m $(MALLOC_LIST) -p 2 > $@
+$(multi_analysis_csv):
+	mkdir -p $(dir $@)
+	$(analysis_calculate) -b $(BENCHMARK_LIST) -met $(analysis_metric) -m $(MALLOC_LIST) -p 2 -r results/multi_threaded > $@
 
-# Raw (non-aggregated) CSV; override the filename via analysis_raw_csv=...
-$(analysis_raw_csv):
-	$(analysis_calculate_raw) -b $(BENCHMARK_LIST) -met $(analysis_metric) -m $(MALLOC_LIST) -p 2 > $@
+$(multi_analysis_raw_csv):
+	mkdir -p $(dir $@)
+	$(analysis_calculate_raw) -b $(BENCHMARK_LIST) -met $(analysis_metric) -m $(MALLOC_LIST) -p 2 -r results/multi_threaded > $@
+
+$(multi_analysis_pdf): $(multi_analysis_csv)
+	mkdir -p $(dir $@)
+	$(analysis_plot_ranked) -i $< -o $@ --csv-dir $(multi_analysis_dir)
+
+# Single-threaded analysis: build CSVs and PDF under $(single_analysis_dir)
+analysis/single_threaded: $(single_analysis_pdf) $(single_analysis_raw_csv)
+
+$(single_analysis_csv):
+	mkdir -p $(dir $@)
+	$(analysis_calculate) -b $(BENCHMARK_LIST) -met $(analysis_metric) -m $(MALLOC_LIST) -p 2 -r results/single_threaded > $@
+
+$(single_analysis_raw_csv):
+	mkdir -p $(dir $@)
+	$(analysis_calculate_raw) -b $(BENCHMARK_LIST) -met $(analysis_metric) -m $(MALLOC_LIST) -p 2 -r results/single_threaded > $@
+
+$(single_analysis_pdf): $(single_analysis_csv)
+	mkdir -p $(dir $@)
+	$(analysis_plot_ranked) -i $< -o $@ --csv-dir $(single_analysis_dir)
 
 analysis/clean:
-	rm -f $(analysis_csv) $(analysis_pdf) $(analysis_ranked_csvs) $(analysis_raw_csv)
+	rm -f $(multi_analysis_csv) $(multi_analysis_pdf) $(multi_ranked_csvs) $(multi_analysis_raw_csv)
+	rm -f $(single_analysis_csv) $(single_analysis_pdf) $(single_ranked_csvs) $(single_analysis_raw_csv)
+
+analysis/multi_threaded_clean:
+	rm -f $(multi_analysis_csv) $(multi_analysis_pdf) $(multi_ranked_csvs) $(multi_analysis_raw_csv)
+
+analysis/single_threaded_clean:
+	rm -f $(single_analysis_csv) $(single_analysis_pdf) $(single_ranked_csvs) $(single_analysis_raw_csv)
