@@ -15,7 +15,7 @@ BENCHMARK_COL = 'benchmark'
 GLIBC_NAME = 'ptmalloc2'
 DL_NAME = "dlmalloc"
 MI_NAME = "mimalloc"
-THINGS_TO_COMPARE=['mean','median','mad']
+THINGS_TO_COMPARE=['mean','median','mad_pct']
 # Plot scale tuning
 SYMLOG_LINTHRESH = 5.0   # half-width (in %) of the linear region around 0
 SYMLOG_LINSCALE  = 1.0   # visual scaling of that linear region
@@ -29,7 +29,7 @@ def parse_columns(columns, things_to_compare=None):
         thing_2: [(malloc, col), ...],
         ...
       }
-    where each 'thing' comes from THINGS_TO_COMPARE (e.g., mean/median/mad),
+    where each 'thing' comes from THINGS_TO_COMPARE (e.g., mean/median/mad_pct),
     matched by column suffix: "<malloc>_<...>_<thing>" OR "<malloc>_<thing>".
     """
     suffixes = things_to_compare if things_to_compare is not None else THINGS_TO_COMPARE
@@ -124,7 +124,7 @@ def export_diffs_to_csvs(diffs_by_thing, out_dir, float_precision=6):
     Write four CSV files (one per figure) into out_dir:
       - mean.csv        : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['mean']
       - median.csv      : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['median']
-      - mad.csv         : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['mad']
+      - mad_pct.csv         : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['mad_pct']
       - abs_median.csv  : abs of diffs_by_thing['median'] with same columns
     If a thing is missing, its file is skipped.
     """
@@ -142,17 +142,17 @@ def export_diffs_to_csvs(diffs_by_thing, out_dir, float_precision=6):
 
     _write_csv("mean.csv",   diffs_by_thing.get("mean"))
     _write_csv("median.csv", diffs_by_thing.get("median"))
-    _write_csv("mad.csv",    diffs_by_thing.get("mad"))
+    _write_csv("mad_pct.csv",    diffs_by_thing.get("mad_pct"))
 
     med = diffs_by_thing.get("median")
     if med is not None and not med.empty:
         _write_csv("abs_median.csv", med.abs())
 
 # ---------------- Diff computation (epsilon) ----------------
-def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
+def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, mad_pctpct_by_thing=None):
     """
     Create 4 figures into one PDF.
-    On the MEAN panel: draw envelope lines mean±MAD% (two extra lines per allocator).
+    On the MEAN panel: draw envelope lines mean±mad_pct% (two extra lines per allocator).
     """
     from matplotlib.backends.backend_pdf import PdfPages
     with PdfPages(output_pdf) as pdf:
@@ -168,7 +168,7 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
                 ax.set_yscale('symlog', linthresh=SYMLOG_LINTHRESH, linscale=SYMLOG_LINSCALE)
 
             colors = ['tab:blue', 'tab:orange']
-            mad_frame = madpct_by_thing.get(metric_name) if madpct_by_thing is not None else None
+            mad_pct_frame = mad_pctpct_by_thing.get(metric_name) if mad_pctpct_by_thing is not None else None
 
             for i, col in enumerate(cols):
                 color = colors[i % len(colors)]
@@ -177,20 +177,20 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
                 x = np.arange(1, len(s_sorted) + 1)
                 y = s_sorted.values
 
-                # Plot the main mean/median/MAD line
+                # Plot the main mean/median/mad_pct line
                 ax.plot(x, y, label=col, color=color, linewidth=1.8, zorder=3)
 
-                # For MEAN panel only, add envelope lines: mean ± MAD%
-                if (metric_name == "mean") and (not use_abs) and (mad_frame is not None) and (col in mad_frame.columns):
-                    mad_sorted = mad_frame[col].reindex(s_sorted.index).values
-                    upper = y + mad_sorted
-                    lower = y - mad_sorted
+                # For MEAN panel only, add envelope lines: mean ± mad_pct%
+                if (metric_name == "mean") and (not use_abs) and (mad_pct_frame is not None) and (col in mad_pct_frame.columns):
+                    mad_pct_sorted = mad_pct_frame[col].reindex(s_sorted.index).values
+                    upper = y + mad_pct_sorted
+                    lower = y - mad_pct_sorted
 
                     # Two visually distinct styles
                     ax.plot(x, upper, color=color, linestyle='--', linewidth=1.0, alpha=0.9,
-                            label=f"{col} +MAD", zorder=2)
+                            label=f"{col} +mad_pct", zorder=2)
                     ax.plot(x, lower, color=color, linestyle=':', linewidth=1.0, alpha=0.9,
-                            label=f"{col} -MAD", zorder=2)
+                            label=f"{col} -mad_pct", zorder=2)
 
                 # Horizontal mean line (same as before)
                 mean_val = np.nanmean(np.abs(df[col].values)) if use_abs else np.nanmean(df[col].values)
@@ -204,9 +204,9 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
             pdf.savefig(fig)
             plt.close(fig)
 
-        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)  # now shows mean±MAD envelopes
+        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)  # now shows mean±mad_pct envelopes
         _draw("median", diffs_by_thing.get("median"), use_abs=False)
-        _draw("mad",    diffs_by_thing.get("mad"),    use_abs=False)
+        _draw("mad_pct",    diffs_by_thing.get("mad_pct"),    use_abs=False)
         _draw("median", diffs_by_thing.get("median"), use_abs=True)
 
 
@@ -217,7 +217,7 @@ def export_diffs_to_excels(diffs_by_thing, out_dir):
     Write four Excel files (one per figure):
       - mean.xlsx       : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['mean']
       - median.xlsx     : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['median']
-      - mad.xlsx        : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['mad']
+      - mad_pct.xlsx        : columns [benchmark, dlmalloc, mimalloc] from diffs_by_thing['mad_pct']
       - abs_median.xlsx : abs of diffs_by_thing['median'] with same columns
     If a thing is missing, its file is skipped.
     """
@@ -236,7 +236,7 @@ def export_diffs_to_excels(diffs_by_thing, out_dir):
 
     _write_excel("mean.xlsx",   diffs_by_thing.get("mean"))
     _write_excel("median.xlsx", diffs_by_thing.get("median"))
-    _write_excel("mad.xlsx",    diffs_by_thing.get("mad"))
+    _write_excel("mad_pct.xlsx",    diffs_by_thing.get("mad_pct"))
 
     # abs median
     med = diffs_by_thing.get("median")
@@ -258,18 +258,18 @@ def _rank_series_abs(s):
     y = s_sorted.values
     return x, y
 
-def compute_yerr_from_mad_in_csv(df, colmap, eps_factor=0.5, eps_floor=None):
+def compute_yerr_from_mad_pct_in_csv(df, colmap, eps_factor=0.5, eps_floor=None):
     if BENCHMARK_COL not in df.columns:
         raise ValueError(f"Missing required column '{BENCHMARK_COL}'.")
     work = df.set_index(BENCHMARK_COL, drop=True)
 
     pairs_mean = colmap.get('mean', [])
-    pairs_mad  = colmap.get('mad', [])
-    if not pairs_mean or not pairs_mad:
+    pairs_mad_pct  = colmap.get('mad_pct', [])
+    if not pairs_mean or not pairs_mad_pct:
         return {'mean': None}
 
     mean_cols = {m: c for (m, c) in pairs_mean}
-    mad_cols  = {m: c for (m, c) in pairs_mad}
+    mad_pct_cols  = {m: c for (m, c) in pairs_mad_pct}
     if GLIBC_NAME not in mean_cols:
         raise ValueError("Baseline mean for glibc not found.")
 
@@ -284,19 +284,19 @@ def compute_yerr_from_mad_in_csv(df, colmap, eps_factor=0.5, eps_floor=None):
     allocs = [m for (m, _) in pairs_mean if m != GLIBC_NAME]
     yerr = {}
     for m in allocs:
-        if m in mad_cols:
-            mad_series = work[mad_cols[m]]
-            yerr[m] = 100.0 * mad_series.div(base, axis=0)  # MAD seconds -> MAD percent of glibc mean
+        if m in mad_pct_cols:
+            mad_pct_series = work[mad_pct_cols[m]]
+            yerr[m] = 100.0 * mad_pct_series.div(base, axis=0)  # mad_pct seconds -> mad_pct percent of glibc mean
         else:
             yerr[m] = pd.Series(np.nan, index=work.index)
 
     return {'mean': pd.DataFrame(yerr, index=work.index)}
 
 
-def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
+def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, mad_pctpct_by_thing=None):
     """
     Create 4 figures into one PDF.
-    On the MEAN panel: draw envelope lines mean±MAD% (two extra lines per allocator).
+    On the MEAN panel: draw envelope lines mean±mad_pct% (two extra lines per allocator).
     """
     from matplotlib.backends.backend_pdf import PdfPages
     with PdfPages(output_pdf) as pdf:
@@ -312,7 +312,7 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
                 ax.set_yscale('symlog', linthresh=SYMLOG_LINTHRESH, linscale=SYMLOG_LINSCALE)
 
             colors = ['tab:blue', 'tab:orange']
-            mad_frame = madpct_by_thing.get(metric_name) if madpct_by_thing is not None else None
+            mad_pct_frame = mad_pctpct_by_thing.get(metric_name) if mad_pctpct_by_thing is not None else None
 
             for i, col in enumerate(cols):
                 color = colors[i % len(colors)]
@@ -321,20 +321,20 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
                 x = np.arange(1, len(s_sorted) + 1)
                 y = s_sorted.values
 
-                # Plot the main mean/median/MAD line
+                # Plot the main mean/median/mad_pct line
                 ax.plot(x, y, label=col, color=color, linewidth=1.8, zorder=3)
 
-                # For MEAN panel only, add envelope lines: mean ± MAD%
-                if (metric_name == "mean") and (not use_abs) and (mad_frame is not None) and (col in mad_frame.columns):
-                    mad_sorted = mad_frame[col].reindex(s_sorted.index).values
-                    upper = y + mad_sorted
-                    lower = y - mad_sorted
+                # For MEAN panel only, add envelope lines: mean ± mad_pct%
+                if (metric_name == "mean") and (not use_abs) and (mad_pct_frame is not None) and (col in mad_pct_frame.columns):
+                    mad_pct_sorted = mad_pct_frame[col].reindex(s_sorted.index).values
+                    upper = y + mad_pct_sorted
+                    lower = y - mad_pct_sorted
 
                     # Two visually distinct styles
                     ax.plot(x, upper, color=color, linestyle='--', linewidth=1.0, alpha=0.9,
-                            label=f"{col} +MAD", zorder=2)
+                            label=f"{col} +mad_pct", zorder=2)
                     ax.plot(x, lower, color=color, linestyle=':', linewidth=1.0, alpha=0.9,
-                            label=f"{col} -MAD", zorder=2)
+                            label=f"{col} -mad_pct", zorder=2)
 
                 # Horizontal mean line (same as before)
                 mean_val = np.nanmean(np.abs(df[col].values)) if use_abs else np.nanmean(df[col].values)
@@ -348,9 +348,9 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, madpct_by_thing=None):
             pdf.savefig(fig)
             plt.close(fig)
 
-        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)  # now shows mean±MAD envelopes
+        _draw("mean",   diffs_by_thing.get("mean"),   use_abs=False)  # now shows mean±mad_pct envelopes
         _draw("median", diffs_by_thing.get("median"), use_abs=False)
-        _draw("mad",    diffs_by_thing.get("mad"),    use_abs=False)
+        _draw("mad_pct",    diffs_by_thing.get("mad_pct"),    use_abs=False)
         _draw("median", diffs_by_thing.get("median"), use_abs=True)
 
   
@@ -377,14 +377,14 @@ def main():
         eps_factor=args.eps_factor, eps_floor=args.eps_floor
     )
 
-    madpct_by_thing = compute_yerr_from_mad_in_csv(
+    mad_pctpct_by_thing = compute_yerr_from_mad_pct_in_csv(
         df, colmap, eps_factor=args.eps_factor, eps_floor=args.eps_floor
     )
 
     if args.csv_dir:
         export_diffs_to_csvs(diffs_by_thing, args.csv_dir, float_precision=args.float_precision)
 
-    plot_ranked_percent_diffs(diffs_by_thing, args.output, madpct_by_thing=madpct_by_thing)
+    plot_ranked_percent_diffs(diffs_by_thing, args.output, mad_pctpct_by_thing=mad_pctpct_by_thing)
 
 
 if __name__ == "__main__":

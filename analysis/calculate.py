@@ -10,6 +10,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', '--benchmarks', type=str, help='text file containing the list of benchmarks')
     parser.add_argument('-m', '--mallocs', type=str, help='text file containing the list of malloc implementations')
+    parser.add_argument('-r','--results-dir',type=str, default='results/multi_threaded', help='results directory root (e.g. results/multi_threaded or results/single_threaded)')
     parser.add_argument('-met', '--metrics', type=str, nargs='+', help='List of metrics to calculate')
     parser.add_argument('-p', '--precision', type=int, default=0, help='Digits after the decimal point')
     args = parser.parse_args()
@@ -36,8 +37,11 @@ if __name__ == '__main__':
         results = [benchmark, None]
         iterations_set = set()
 
+        # base results directory (user-controlled)
+        results_root = args.results_dir.rstrip('/')
+
         for malloc in mallocs:
-            paths = glob.glob(f'results/{malloc}/{benchmark}/repeat*/time.csv')
+            paths = glob.glob(f'{results_root}/{malloc}/{benchmark}/repeat*/time.csv')
             time_dfs = []
             for p in paths:
                 try:

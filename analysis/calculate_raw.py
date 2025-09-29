@@ -11,6 +11,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', '--benchmarks', type=str, help='text file containing the list of benchmarks')
     parser.add_argument('-m', '--mallocs', type=str, help='text file containing the list of malloc implementations')
+    parser.add_argument('-r','--results-dir',type=str, default='results/multi_threaded', help='results directory root (e.g. results/multi_threaded or results/single_threaded)')
     parser.add_argument('-met', '--metrics', type=str, nargs='+', help='List of metrics to calculate')
     parser.add_argument('-p', '--precision', type=int, default=0, help='Digits after the decimal point')
     args = parser.parse_args()
@@ -29,7 +30,7 @@ if __name__ == '__main__':
     for m in mallocs:
         found_repeats = []
         for b in benchmarks:
-            base = os.path.join('results', m, b)
+            base = os.path.join(args.results_dir.rstrip('/'), m, b)
             if os.path.isdir(base):
                 try:
                     found = sorted([d for d in os.listdir(base) if d.startswith('repeat') and os.path.isdir(os.path.join(base, d))])
@@ -60,7 +61,7 @@ if __name__ == '__main__':
     for b in benchmarks:
         for m in mallocs:
             for r in repeats:
-                time_csv = os.path.join('results', m, b, r, 'time.csv')
+                time_csv = os.path.join(args.results_dir.rstrip('/'), m, b, r, 'time.csv')
                 if not os.path.exists(time_csv):
                     continue
                 try:
@@ -99,7 +100,7 @@ if __name__ == '__main__':
             row_id = f"{benchmark}-{malloc}"
             results = [row_id, bench_iterations_final.get(benchmark)]
             for r in repeats:
-                time_csv = os.path.join('results', malloc, benchmark, r, 'time.csv')
+                time_csv = os.path.join(args.results_dir.rstrip('/'), malloc, benchmark, r, 'time.csv')
                 if not os.path.exists(time_csv):
                     # missing repeat folder or file; append empty values for each metric
                     results.extend([None] * len(args.metrics))
