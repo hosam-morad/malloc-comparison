@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     # Build DataFrame columns: first column is identifier 'benchmark-malloc',
     # then an 'iterations' column, then one column per repeat per metric
-    columns_label = ['benchmark_malloc', 'iterations']
+    columns_label = ['benchmark', 'iterations']
     for r in repeats:
         for metric in args.metrics:
             columns_label.append(f"{r}_{metric}")
