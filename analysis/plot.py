@@ -16,6 +16,7 @@ GLIBC_NAME = 'ptmalloc2'
 DL_NAME = "dlmalloc"
 MI_NAME = "mimalloc"
 THINGS_TO_COMPARE=['mean','median','mad_pct']
+PARSE_SUFFIXES    = ['mean', 'median', 'mad_pct']
 # Plot scale tuning
 SYMLOG_LINTHRESH = 5.0   # half-width (in %) of the linear region around 0
 SYMLOG_LINSCALE  = 1.0   # visual scaling of that linear region
@@ -182,15 +183,20 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, mad_pctpct_by_thing=No
 
                 # For MEAN panel only, add envelope lines: mean ± mad_pct%
                 if (metric_name == "mean") and (not use_abs) and (mad_pct_frame is not None) and (col in mad_pct_frame.columns):
+                    # Use vertical error bars instead of upper/lower envelope lines
                     mad_pct_sorted = mad_pct_frame[col].reindex(s_sorted.index).values
-                    upper = y + mad_pct_sorted
-                    lower = y - mad_pct_sorted
-
-                    # Two visually distinct styles
-                    ax.plot(x, upper, color=color, linestyle='--', linewidth=1.0, alpha=0.9,
-                            label=f"{col} +mad_pct", zorder=2)
-                    ax.plot(x, lower, color=color, linestyle=':', linewidth=1.0, alpha=0.9,
-                            label=f"{col} -mad_pct", zorder=2)
+                    mad_pct_sorted = np.nan_to_num(mad_pct_sorted, nan=0.0)
+                    yerr = mad_pct_sorted
+                    ax.errorbar(
+                        x, y,
+                        yerr=yerr,
+                        fmt='none',            # don't draw markers (main line is drawn already)
+                        ecolor=color,
+                        elinewidth=1.0,
+                        capsize=3,
+                        alpha=0.9,
+                        zorder=2
+                    )
 
                 # Horizontal mean line (same as before)
                 mean_val = np.nanmean(np.abs(df[col].values)) if use_abs else np.nanmean(df[col].values)
@@ -258,39 +264,33 @@ def _rank_series_abs(s):
     y = s_sorted.values
     return x, y
 
-def compute_yerr_from_mad_pct_in_csv(df, colmap, eps_factor=0.5, eps_floor=None):
+def compute_yerr_from_mad_pct_in_csv(df, colmap, *_args, **_kw):
+    """
+    Build y-error bars for the MEAN plot using MAD% columns straight from the CSV.
+    Assumes *_mad_pct columns are already in percent (e.g., 0.14 => ±0.14%).
+    """
     if BENCHMARK_COL not in df.columns:
         raise ValueError(f"Missing required column '{BENCHMARK_COL}'.")
     work = df.set_index(BENCHMARK_COL, drop=True)
 
-    pairs_mean = colmap.get('mean', [])
-    pairs_mad_pct  = colmap.get('mad_pct', [])
+    pairs_mean    = colmap.get('mean', [])
+    pairs_mad_pct = colmap.get('mad_pct', [])
     if not pairs_mean or not pairs_mad_pct:
         return {'mean': None}
 
-    mean_cols = {m: c for (m, c) in pairs_mean}
-    mad_pct_cols  = {m: c for (m, c) in pairs_mad_pct}
-    if GLIBC_NAME not in mean_cols:
-        raise ValueError("Baseline mean for glibc not found.")
-
-    global_floor = (np.finfo(float).eps if eps_floor is None else float(eps_floor))
-    vals_mean_df = pd.DataFrame({m: work[c] for (m, c) in pairs_mean}, index=work.index)
-    row_min_pos  = vals_mean_df.where(vals_mean_df > 0).min(axis=1)
-    eps_series   = (row_min_pos * eps_factor).fillna(global_floor)
-
-    base_glibc_mean = work[mean_cols[GLIBC_NAME]]
-    base = base_glibc_mean.where(base_glibc_mean.notna() & (base_glibc_mean != 0), eps_series)
-
+    mad_pct_cols = {m: c for (m, c) in pairs_mad_pct}
     allocs = [m for (m, _) in pairs_mean if m != GLIBC_NAME]
+
     yerr = {}
     for m in allocs:
         if m in mad_pct_cols:
-            mad_pct_series = work[mad_pct_cols[m]]
-            yerr[m] = 100.0 * mad_pct_series.div(base, axis=0)  # mad_pct seconds -> mad_pct percent of glibc mean
+            s = pd.to_numeric(work[mad_pct_cols[m]], errors='coerce')
+            yerr[m] = s.abs()  # non-negative whisker lengths, in % units already
         else:
             yerr[m] = pd.Series(np.nan, index=work.index)
 
     return {'mean': pd.DataFrame(yerr, index=work.index)}
+
 
 
 def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, mad_pctpct_by_thing=None):
@@ -309,7 +309,8 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, mad_pctpct_by_thing=No
 
             # Keep symlog only for the mean (non-abs) panel
             if metric_name == "mean" and not use_abs:
-                ax.set_yscale('symlog', linthresh=SYMLOG_LINTHRESH, linscale=SYMLOG_LINSCALE)
+                #ax.set_yscale('symlog', linthresh=SYMLOG_LINTHRESH, linscale=SYMLOG_LINSCALE)
+                ax.set_yscale('linear')
 
             colors = ['tab:blue', 'tab:orange']
             mad_pct_frame = mad_pctpct_by_thing.get(metric_name) if mad_pctpct_by_thing is not None else None
@@ -327,14 +328,18 @@ def plot_ranked_percent_diffs(diffs_by_thing, output_pdf, mad_pctpct_by_thing=No
                 # For MEAN panel only, add envelope lines: mean ± mad_pct%
                 if (metric_name == "mean") and (not use_abs) and (mad_pct_frame is not None) and (col in mad_pct_frame.columns):
                     mad_pct_sorted = mad_pct_frame[col].reindex(s_sorted.index).values
-                    upper = y + mad_pct_sorted
-                    lower = y - mad_pct_sorted
-
-                    # Two visually distinct styles
-                    ax.plot(x, upper, color=color, linestyle='--', linewidth=1.0, alpha=0.9,
-                            label=f"{col} +mad_pct", zorder=2)
-                    ax.plot(x, lower, color=color, linestyle=':', linewidth=1.0, alpha=0.9,
-                            label=f"{col} -mad_pct", zorder=2)
+                    mad_pct_sorted = np.nan_to_num(mad_pct_sorted, nan=0.0)
+                    yerr = mad_pct_sorted
+                    ax.errorbar(
+                        x, y,
+                        yerr=yerr,
+                        fmt='none',
+                        ecolor=color,
+                        elinewidth=1.0,
+                        capsize=3,
+                        alpha=0.9,
+                        zorder=2
+                    )
 
                 # Horizontal mean line (same as before)
                 mean_val = np.nanmean(np.abs(df[col].values)) if use_abs else np.nanmean(df[col].values)
@@ -371,20 +376,19 @@ def main():
     else:
         df = pd.read_csv(args.input)
 
-    colmap = parse_columns(df.columns, THINGS_TO_COMPARE)
+    colmap = parse_columns(df.columns, PARSE_SUFFIXES)
     diffs_by_thing = prepare_precent_differences(
         df, colmap, THINGS_TO_COMPARE,
         eps_factor=args.eps_factor, eps_floor=args.eps_floor
     )
+    mad_by_thing = compute_yerr_from_mad_pct_in_csv(df, colmap)
+    
 
-    mad_pctpct_by_thing = compute_yerr_from_mad_pct_in_csv(
-        df, colmap, eps_factor=args.eps_factor, eps_floor=args.eps_floor
-    )
 
     if args.csv_dir:
         export_diffs_to_csvs(diffs_by_thing, args.csv_dir, float_precision=args.float_precision)
 
-    plot_ranked_percent_diffs(diffs_by_thing, args.output, mad_pctpct_by_thing=mad_pctpct_by_thing)
+    plot_ranked_percent_diffs(diffs_by_thing, args.output, mad_pctpct_by_thing=mad_by_thing)
 
 
 if __name__ == "__main__":
