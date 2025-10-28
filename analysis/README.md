@@ -61,4 +61,22 @@ Each merged file is generated using `merge_csvs.py`.
 ---
 
 ## Output Structure
-
+analysis/
+├── multi_threaded/
+│ ├── summary_run_time.csv
+│ ├── summary_raw_run_time.csv
+│ ├── summary_run_time.pdf
+│ ├── mean.csv
+│ ├── median.csv
+│ ├── mad.csv
+│ └── abs_median.csv
+├── single_threaded/
+│ ├── summary_run_time.csv
+│ ├── summary_raw_run_time.csv
+│ ├── summary_run_time.pdf
+│ ├── mean.csv
+│ ├── median.csv
+│ ├── mad.csv
+│ └── abs_median.csv
+└── merged/
+└── *.csv
