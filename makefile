@@ -6,7 +6,7 @@ SHELL := /bin/bash
 
 MODULE_NAME := all
 
-benchmarks_root := /scratch/hosam.morad/benchmarks
+benchmarks_root := /csl/benchmarks/ubuntu20
 export BENCHMARKS_ROOT = $(benchmarks_root)
 export ROOT_DIR := $(PWD)
 
