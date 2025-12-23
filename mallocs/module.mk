@@ -8,7 +8,7 @@ MALLOC_CMAKE      := $(MALLOC_ROOT_DIR)/CMakeLists.txt
 # Logical name inside the framework
 STANDALONE_MALLOC_NAME    := malloc-standalone
 # Actual prebuilt .so you already have
-STANDALONE_MALLOC_SRC_SO  := ../malloc-standalone/build/libmalloc_try.so
+STANDALONE_MALLOC_SRC_SO  := ../malloc-standalone/automated/build/libmalloc_auto.so
 
 # --- Submodules guard ---------------------------------------------------------
 SUBMODULES_STAMP := $(MALLOC_ROOT_DIR)/.submodules-inited
