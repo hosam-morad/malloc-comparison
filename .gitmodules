@@ -1,3 +1,7 @@
 [submodule "mallocs/mimalloc"]
 	path = mallocs/mimalloc
 	url = git@github.com:microsoft/mimalloc.git
+[submodule "mallocs/malloc-standalone-auto"]
+	path = mallocs/malloc-standalone-auto
+	url = git@github.com:hosam-morad/malloc-standalone-auto.git
+	branch = main
