@@ -23,5 +23,4 @@ $(MEASUREMENTS): experiments-prerequisites
 DELETED_TARGETS := $(EXPERIMENTS) $(EXPERIMENT_REPEATS)
 CLEAN_TARGETS := $(addsuffix /clean,$(DELETED_TARGETS))
 $(CLEAN_TARGETS): %/clean: %/delete
-$(MODULE_NAME)/clean: $(CLEAN_TARGETS)
-
+$(EXPERIMENT_DIR)/clean: $(CLEAN_TARGETS)

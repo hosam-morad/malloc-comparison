@@ -24,12 +24,13 @@ include(CompilerFlags.cmake)
 
 set(MALLOC_VERSIONS
     # glibcmalloc
-    dlmalloc
-    mimalloc
+    # dlmalloc
+    # mimalloc
+    malloc-standalone-auto
 )
 
 # Extend the Make-only list by prepending or appending ptmalloc2
-set(MALLOC_VERSIONS_MAKE ptmalloc2 ${MALLOC_VERSIONS})
+set(MALLOC_VERSIONS_MAKE ${MALLOC_VERSIONS} ptmalloc2)
 
 # Convert to Make-space-separated format
 string(REPLACE ";" " " MALLOC_VERSIONS_MAKE_STR "${MALLOC_VERSIONS_MAKE}")
@@ -39,7 +40,7 @@ file(WRITE "${CMAKE_SOURCE_DIR}/versions.mk"
     "MALLOC_VERSIONS := ${MALLOC_VERSIONS_MAKE_STR}\n")
 
 # Place all shared libs in a central location
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 
 # Add a shared library target for each

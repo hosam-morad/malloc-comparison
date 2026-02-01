@@ -20,8 +20,7 @@ $(MALLOC_BUILD_DIR):            | $(SUBMODULES_STAMP)
 
 # --- Versions discovery -------------------------------------------------------
 # Base default; repo / CMake may override this via versions.mk
-# MALLOC_VERSIONS ?= dlmalloc mimalloc
-MALLOC_VERSIONS ?= malloc_auto
+MALLOC_VERSIONS ?= dlmalloc mimalloc malloc-standalone-auto
 
 # If CMake generates versions.mk, this rule will create/update it when CMakeLists changes
 $(MALLOC_ROOT_DIR)/versions.mk: $(MALLOC_CMAKE)
@@ -33,12 +32,13 @@ $(MALLOC_ROOT_DIR)/versions.mk: $(MALLOC_CMAKE)
 
 # --- Libs list & outputs ------------------------------------------------------
 MALLOC_LIST     := $(MALLOC_ROOT_DIR)/malloc_list.txt
-MALLOC_LIB_DIR  := $(MALLOC_BUILD_DIR)/lib
+MALLOC_LIB_DIR  := $(MALLOC_BUILD_DIR)
+
 
 # Built by CMake: all mallocs except the standalone one
 MALLOC_LIBS := $(foreach malloc,$(MALLOC_VERSIONS),$(MALLOC_LIB_DIR)/lib$(malloc).so)
 
-.PHONY: mallocs
+.PHONY: mallocs mallocs/clean
 mallocs: $(MALLOC_LIBS) $(MALLOC_LIST)
 
 # --- Build rule for CMake-built mallocs --------------------------------------
@@ -47,10 +47,9 @@ $(MALLOC_LIBS): $(MALLOC_CMAKE) | $(MALLOC_BUILD_DIR)
 
 $(MALLOC_BUILD_DIR):
 	mkdir -p $@
-
+	
 $(MALLOC_LIB_DIR):
 	mkdir -p $@
-
 # --- Versions list ------------------------------------------------------------
 $(MALLOC_LIST): $(MALLOC_ROOT_DIR)/versions.mk | $(MALLOC_ROOT_DIR)
 	echo $(MALLOC_VERSIONS) | tr " " "\n" | sort > $@
@@ -64,3 +63,6 @@ MALLOC_VERSION_STAMP := $(MALLOC_ROOT_DIR)/version_
 $(MALLOC_VERSION_STAMP):
 	mkdir -p $(MALLOC_ROOT_DIR)
 	touch $@
+
+mallocs/clean:
+	rm -rf $(MALLOC_BUILD_DIR) $(MALLOC_VERSION_STAMP) $(MALLOC_LIST) $(MALLOC_ROOT_DIR)/versions.mk $(SUBMODULES_STAMP)

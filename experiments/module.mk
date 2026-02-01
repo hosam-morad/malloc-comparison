@@ -2,7 +2,7 @@ MODULE_NAME := experiments
 SUBMODULES := $(addprefix $(MODULE_NAME)/,$(MALLOC_VERSIONS))
 
 ifndef NUM_OF_REPEATS
-NUM_OF_REPEATS := 3
+NUM_OF_REPEATS := 1
 endif # ifndef NUM_OF_REPEATS
 
 BENCHMARK_LIST := experiments/benchmark_list.txt
@@ -50,5 +50,6 @@ $(BENCHMARK_LIST): $(MODULE_NAME)/module.mk
 	echo $(benchmarks) | tr " " "\n" | sort > $@
 
 $(MODULE_NAME)/clean: $(addsuffix /clean,$(SUBMODULES))
+	rm -rf $(SUBMODULES)
 
 -include $(SUBMAKEFILES)
