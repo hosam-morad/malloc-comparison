@@ -20,7 +20,7 @@ $(MALLOC_BUILD_DIR):            | $(SUBMODULES_STAMP)
 
 # --- Versions discovery -------------------------------------------------------
 # Base default; repo / CMake may override this via versions.mk
-MALLOC_VERSIONS ?= dlmalloc mimalloc malloc-standalone-auto
+MALLOC_VERSIONS ?= dlmalloc mimalloc standmalloc
 
 # If CMake generates versions.mk, this rule will create/update it when CMakeLists changes
 $(MALLOC_ROOT_DIR)/versions.mk: $(MALLOC_CMAKE)

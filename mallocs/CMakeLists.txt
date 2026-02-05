@@ -23,10 +23,9 @@ include(CompilerFlags.cmake)
 # List of all malloc implementation subdirs
 
 set(MALLOC_VERSIONS
-    # glibcmalloc
-    # dlmalloc
+    standmalloc
+    dlmalloc
     # mimalloc
-    malloc-standalone-auto
 )
 
 # Extend the Make-only list by prepending or appending ptmalloc2
